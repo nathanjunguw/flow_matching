@@ -68,9 +68,7 @@ class MLP(nn.Module):
 
         for layer, projs in zip(self.hidden_layers, self.time_projs):
             # we add the projection onto it to embed time into the model
-            h = layer(h) + projs(e_t)
-            # we have to add the activation now
-            h = self.act(h)
+            h = h + self.act(layer(h) + projs(e_t))
         
         return self.out_layer(h)
 
@@ -81,6 +79,9 @@ The following pertains to the paths that we can try to use. The list of path typ
 'linear'
 
 'encode_decode'
+
+'variance_preserve'
+
 """
 
 # loss function for the velocity b(t,x)
@@ -117,6 +118,54 @@ def dalpha_linear(t):
 
 def dbeta_linear(t):
     return torch.ones_like(t)
+
+def alpha_variance_preserve(t):
+    return torch.cos(math.pi / 2 * t)
+def beta_variance_preserve(t):
+    return torch.sin(math.pi / 2 * t)
+def gamma_variance_preserve(t):
+    return torch.zeros_like(t)
+
+def dalpha_variance_preserve(t):
+    return (-1 * math.pi / 2) * beta_variance_preserve(t)
+def dbeta_variance_preserve(t):
+    return (math.pi / 2) * alpha_variance_preserve(t)
+def dgamma_variance_preserve(t):
+    return torch.zeros_like(t)
+
+c = 0.3  # noise scale
+
+def alpha_trig_noise(t):
+    g = c * torch.sin(t * math.pi)
+    return torch.cos(t * math.pi / 2) * torch.sqrt(1 - g**2)
+
+def beta_trig_noise(t):
+    g = c * torch.sin(t * math.pi)
+    return torch.sin(t * math.pi / 2) * torch.sqrt(1 - g**2)
+
+def gamma_trig_noise(t):
+    return c * torch.sin(t * math.pi)
+
+def dalpha_trig_noise(t):
+    g = c * torch.sin(t * math.pi)
+    dg = c * math.pi * torch.cos(t * math.pi)
+    a = torch.cos(t * math.pi / 2)
+    da = -math.pi/2 * torch.sin(t * math.pi / 2)
+    s = torch.sqrt(1 - g**2)
+    ds = -g * dg / s
+    return da * s + a * ds
+
+def dbeta_trig_noise(t):
+    g = c * torch.sin(t * math.pi)
+    dg = c * math.pi * torch.cos(t * math.pi)
+    b = torch.sin(t * math.pi / 2)
+    db = math.pi/2 * torch.cos(t * math.pi / 2)
+    s = torch.sqrt(1 - g**2)
+    ds = -g * dg / s
+    return db * s + b * ds
+
+def dgamma_trig_noise(t):
+    return c * math.pi * torch.cos(t * math.pi)
 
 class Interpolant:
     def __init__(self, path):

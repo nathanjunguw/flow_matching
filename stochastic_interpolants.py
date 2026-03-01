@@ -4,6 +4,7 @@ import math
 from torch.optim import AdamW
 from datasets import Dataset, DatasetDict
 import matplotlib.pyplot as plt
+import numpy as np
 
 def sincos_embed(t, time_dimension, base = 10000.0):
     # we cut the number of time dimensions in half
@@ -214,7 +215,7 @@ class Interpolant:
     # the two train types that you can put are velocity and denoiser
     def train_model(self, model, dataset_base, dataset_target, train_type = 'velocity', n_iterations = 3000,
                     batch_size = 256, log_every = 200, base_lr = 1e-3, weight_decay = 1e-7,
-                    out_name = "MLP_VELOCITY_MODEL.pt"):
+                    out_name = "MLP_VELOCITY_MODEL.pt", rand_run = False):
         
         optimizer = AdamW(model.parameters(), lr=base_lr, weight_decay=weight_decay)
         scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=n_iterations)
@@ -226,6 +227,8 @@ class Interpolant:
 
         for step in range(1, n_iterations+1):
             x_initial, x_target = self.sample_batch(batch_size, dataset_base, dataset_target, device)
+            if rand_run:
+                x_initial = torch.randn_like(x_initial)
             
             xt, t, t_view, z = self.interpolate(x_initial, x_target)
 
@@ -333,3 +336,81 @@ def run_flow(dataset_base, model, n_steps=5000, save_frames=9, img_size=64, clam
 
     x_end, frames, ts = ode_pushforward_euler_mlp(model, x_src, n_steps=n_steps, clamp_x=clamp_x, save_frames=save_frames, img_size=img_size)
     show_frames(frames, ts, img_size=img_size)
+
+# function so that we can flow multiple tensors through the euler step scheme at once
+from tqdm import tqdm
+
+def flow_dataset_through_model(model, dataset, n_steps=100, device=None, batch_size=64):
+    if device is None:
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    model.eval()
+    outputs = []
+    images = torch.tensor(np.array(dataset["train"]["pixel_values"]), dtype=torch.float32)
+    dt = 1.0 / n_steps
+    total_blowups = 0
+    with torch.no_grad():
+        for i in tqdm(range(0, len(images), batch_size), desc="Flowing batches"):
+            x = images[i:i+batch_size].to(device)
+            B = x.size(0)
+            alive = torch.ones(B, dtype=torch.bool, device=device)
+            for step in range(n_steps):
+                t = torch.full((B,), step * dt, device=device)
+                v = model(x, t)
+                x = x + v * dt
+                blown = torch.isnan(x).any(dim=1) | torch.isinf(x).any(dim=1)
+                newly_blown = alive & blown
+                if newly_blown.any():
+                    count = newly_blown.sum().item()
+                alive = alive & ~blown
+            valid = x[alive]
+            total_blowups += (~alive).sum().item()
+            if len(valid) > 0:
+                outputs.append(valid.cpu())
+    
+    print(f"Done. Removed {total_blowups} samples total due to blowup")
+    outputs = torch.cat(outputs, dim=0).numpy()
+    return DatasetDict({
+        "train": Dataset.from_dict({"pixel_values": outputs})
+    })
+
+# we want to filter the dataset of calculated values from trajectories which may explode or
+# those which we have not caught the explosion in the flow_dataset_through_model function
+
+def filter_dataset(dataset, min_val=-2, max_val=2, threshold=0.9):
+    samples = np.array(dataset["train"]["pixel_values"])
+    mask = np.array([((s >= min_val) & (s <= max_val)).mean() >= threshold
+                     for s in tqdm(samples, desc="Filtering samples")])
+    print(f"Removed {(~mask).sum()} samples outside [{min_val}, {max_val}] threshold={threshold}. Kept {mask.sum()}/{len(mask)}")
+    filtered = samples[mask]
+    return DatasetDict({
+        "train": Dataset.from_dict({"pixel_values": filtered})
+    })
+
+# we can use the following function to compute the frechet distance evaluation metric (FID)
+# the batch size is only to make the operation go faster while staying within the required memory
+
+def fid_from_gaussian(model, dataset_target, steps = 1000, batch_size = 64):
+    from scipy.linalg import sqrtm
+    device  = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    new_gaussian_data = dataset_target.copy()
+    new_gaussian_data['train'] = dataset_to_gaussian(dataset_target)
+    calculated_set = flow_dataset_through_model(model, new_gaussian_data, n_steps = steps, device = device, batch_size=batch_size)
+    calculated_set = filter_dataset(calculated_set, min_val = -2, max_val = 2)
+    fake_samples = np.array(calculated_set['train']['pixel_values'])
+    real_samples = np.array(dataset_target['train']['pixel_values'])
+
+    mu_real = np.mean(real_samples, axis=0)
+    mu_fake = np.mean(fake_samples, axis=0)
+
+    sigma_real = np.cov(real_samples, rowvar = False)
+    sigma_fake = np.cov(fake_samples, rowvar = False)
+
+    diff = mu_real - mu_fake
+    eps = 1e-6
+    I = np.eye(sigma_real.shape[0])
+    covmean = sqrtm((sigma_real + eps * I) @ (sigma_fake + eps * I))
+    covmean = covmean.real
+
+    fid = diff @ diff + np.trace(sigma_real + sigma_fake - 2 * covmean)
+    return fid
+

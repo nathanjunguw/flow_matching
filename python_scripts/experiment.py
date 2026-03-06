@@ -4,6 +4,7 @@ from typing import Optional
 from datasets import DatasetDict
 from torch.optim import AdamW
 from tqdm import tqdm
+import numpy as np
 
 from .models import FlowModelConfig
 from .interpolants import Interpolant
@@ -33,6 +34,8 @@ class FlowExperiment:
         self.interpolant = interpolant
         self.stepping    = stepping
         self.device      = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self._real_mu = None
+        self._real_sigma = None
         print(f"Using device: {self.device}")
 
         if stepping == 'sde' and not interpolant.has_noise:
@@ -148,7 +151,7 @@ class FlowExperiment:
             scheduler.step()
 
             if step % log_every == 0:
-                allocated = torch.cuda.memory_allocated() / 1024**3
+                allocated = torch.cuda.memory_reserved() / 1024**3
                 total     = torch.cuda.get_device_properties(0).total_memory / 1024**3
                 percent   = allocated / total * 100
                 pbar.set_postfix({
@@ -205,30 +208,77 @@ class FlowExperiment:
 
     #  FID
 
-    def fid(self, dataset_target: DatasetDict, steps: int = 1000,
-            batch_size: int = 64) -> float:
+    def fid(self, dataset_target, steps=1000, batch_size=64):
         from scipy.linalg import sqrtm
+        from torchvision.models import inception_v3
+        import torchvision.transforms.functional as TF
 
+        # Load InceptionV3 pretrained on ImageNet.
+        # We replace the final classification layer with Identity so we get
+        # the raw 2048-d feature vector instead of 1000-class logits.
+        inception = inception_v3(pretrained=True, transform_input=False)
+        inception.fc = torch.nn.Identity()
+        inception.eval().to(self.device)
+
+        def extract_features(pixel_array):
+            feats = []
+            for i in range(0, len(pixel_array), batch_size):
+                batch = torch.tensor(pixel_array[i:i+batch_size], dtype=torch.float32)
+
+                # Reshape flat pixel values back into (B, C, H, W) image format.
+                batch = batch.reshape(-1, self.config.channels, self.config.img_size, self.config.img_size)
+
+                # InceptionV3 expects 3-channel RGB images at 299x299.
+                # expand(-1, 3, -1, -1) repeats grayscale channel 3 times if needed.
+                batch = TF.resize(batch.expand(-1, 3, -1, -1), [299, 299])
+
+                # Run through inception to get 2048-d feature vectors.
+                # no_grad since we are only doing inference, not training.
+                with torch.no_grad():
+                    feats.append(inception(batch.to(self.device)).cpu().numpy())
+
+            return np.concatenate(feats, axis=0)
+        
+
+
+        # Generate fake images by flowing Gaussian noise through the learned velocity field.
         gaussian_ds = DatasetDict({"train": _dataset_to_gaussian(dataset_target)})
-        generated   = _flow_batch(
-            self.model_velocity, gaussian_ds,
-            n_steps=steps, device=self.device, batch_size=batch_size,
-            img_size=self.config.img_size, channels=self.config.channels,
-            needs_flatten=self.config.needs_flatten,
-        )
+        generated = _flow_batch(self.model_velocity, gaussian_ds, n_steps=steps, batch_size=batch_size)
         generated = filter_dataset(generated)
 
-        real = np.array(dataset_target["train"]["pixel_values"]).reshape(len(dataset_target["train"]), -1)
-        fake = np.array(generated["train"]["pixel_values"]).reshape(len(generated["train"]), -1)
+        if self._real_mu is None or self._real_sigma is None:
+            real_px = np.array(dataset_target["train"]["pixel_values"])
+            real = extract_features(real_px)
+            self._real_mu = real.mean(0)
+            self._real_sigma = np.cov(real, rowvar=False)
 
-        mu_r, mu_f   = real.mean(0), fake.mean(0)
-        sig_r, sig_f = np.cov(real, rowvar=False), np.cov(fake, rowvar=False)
-        diff         = mu_r - mu_f
-        eps          = 1e-6
-        I            = np.eye(sig_r.shape[0])
-        covmean      = sqrtm((sig_r + eps * I) @ (sig_f + eps * I)).real
-        fid_val      = float(diff @ diff + np.trace(sig_r + sig_f - 2 * covmean))
-        print(f"FID: {fid_val:.4f}")
+
+        # Extract raw pixel arrays for both real and generated images.
+        fake_px = np.array(generated["train"]["pixel_values"])
+
+        # Extract inception features for both sets.
+        # Each is shape (N, 2048) — one 2048-d vector per image.
+        fake = extract_features(fake_px)
+
+        # Compute the mean and covariance of each feature distribution.
+        # FID measures how far apart these two distributions are.
+        mu_f  = fake.mean(0)
+        sig_f = np.cov(fake, rowvar=False)
+
+        # Squared difference between the means.
+        diff = self._real_mu - mu_f
+
+        # Small epsilon added to diagonal to keep the matrices numerically stable
+        # before taking the matrix square root.
+        eps = 1e-6
+        I   = np.eye(self._real_sigma.shape[0])
+
+        # Matrix square root of the product of the two covariance matrices.
+        # This is the most expensive step — O(n^3) where n=2048.
+        covmean = sqrtm((self._real_sigma + eps * I) @ (sig_f + eps * I)).real
+
+        # Final FID score: lower is better, 0 means identical distributions.
+        fid_val = float(diff @ diff + np.trace(self._real_sigma + sig_f - 2 * covmean))
         return fid_val
 
     #  LOAD WEIGHTS
@@ -247,12 +297,10 @@ class FlowExperiment:
         if use_random:
             idx   = torch.randint(0, len(dataset_base["train"]), (1,)).item()
             x_src = torch.tensor(dataset_base["train"][idx]["pixel_values"]).to(self.device).float()
-            print(f"Starting from dataset item {idx}")
         else:
             if self.config.needs_flatten:
                 x_src = torch.randn(self.config.flat_size, device=self.device)
             else:
                 x_src = torch.randn(self.config.channels, self.config.img_size,
                                     self.config.img_size, device=self.device)
-            print("Starting from random Gaussian noise")
         return x_src

@@ -192,9 +192,16 @@ def _flow_batch(model, dataset, n_steps=100, device=None, batch_size=64,
 
 def plot_loss(loss_history: list, title: str = "Training objective", window: int = 50):
     import pandas as pd
+    # we want this to be our starting point in case we have any blow up
+    # this should not be a problem on a lower learning rate though.
     threshold = loss_history[0]
+
+    # we clip anything that is above the threshold for the sake of keeping the plot clean
     clipped   = [v if v <= threshold else None for v in loss_history]
+    
+    # we smooth with rolling pandas series
     smoothed  = pd.Series(clipped).rolling(window=window, min_periods=1).mean()
+
     plt.figure(figsize=(10, 4))
     plt.plot(smoothed)
     plt.xlabel("Gradient step")
@@ -211,3 +218,54 @@ def get_size_and_channel(dataset):
     IMAGE_SIZE = sample.shape[1]
     CHANNELS = 1 if sample.dim() == 2 else sample.shape[0]
     return IMAGE_SIZE, CHANNELS
+
+# smooth bump function used to create a value that is one near a chosen center and smoothly decays to zero outside a small neighborhood
+
+def _phi(t):
+    t = np.asarray(t, dtype=float)
+    out = np.zeros_like(t)
+    m = t > 0
+    out[m] = np.exp(-1.0 / t[m])
+    return out
+
+def _eta(s):
+    a = _phi(s)
+    b = _phi(1.0 - s)
+    d = a + b
+    out = np.zeros_like(d)
+    m = d > 0
+    out[m] = a[m] / d[m]
+    out[s >= 1] = 1.0
+    out[s <= 0] = 0.0
+    return out
+
+def bump_function(x, center=0.0, alpha=0.01, outer=0.02):
+    if outer <= alpha:
+        raise ValueError("outer must be larger than alpha")
+    x = np.asarray(x, dtype=float)
+    r = np.abs(x - center)
+    s = (outer - r) / (outer - alpha)
+    y = np.zeros_like(x)
+    y[r <= alpha] = 1.0
+    m = (r > alpha) & (r < outer)
+    y[m] = _eta(s[m])
+    return y.item() if y.shape == () else y
+
+def get_percent_plot(loss_history: list, title: str = 'Objective Realization', window: int = 50, alpha: float = 0.01):
+    import pandas as pd
+
+    # we turn to np.array to pass through the bump_function
+    xs = np.array(loss_history)
+
+    FINAL_OBJ_AVG = sum(loss_history[-50:]) / len(loss_history[-50:])
+    ys = bump_function(xs, center = FINAL_OBJ_AVG, alpha = alpha, outer = 3 * alpha)
+    series = pd.Series(ys).rolling(window = window, min_periods = 1).mean()
+
+    plt.figure(figsize=(10, 4))
+    plt.plot(series)
+    plt.xlabel("Gradient step")
+    plt.ylabel("Final Objective Realization")
+    plt.title(title)
+    plt.grid(True)
+    plt.tight_layout()
+    plt.show()

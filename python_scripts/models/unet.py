@@ -1,10 +1,10 @@
 import torch
 import torch.nn as nn
+
 #  UNET
 #
 #  We use the UNet2DModel from Hugging Face's diffusers library rather than
-#  writing our own. It is a standard 2D UNet designed specifically for
-#  generative modelling with time conditioning already built in.
+#  writing our own.
 #
 #  Input  : (B, C, H, W); batch of images, no flattening needed
 #  Output : (B, C, H, W); same shape as input, predicted velocity field

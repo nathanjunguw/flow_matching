@@ -13,23 +13,23 @@ class FlowModelConfig:
     model_type     : 'mlp' | 'mlp_residual' | 'resnet' | 'unet'
 
     Shared
-    ------
+
     img_size       : spatial side-length of the square input image
     channels       : image channels (1=grayscale, 3=RGB)
     t_dim          : sinusoidal time-embedding dimension (not used by UNet)
 
     MLP / MLP_Residual
-    ------------------
+
     hidden_dim     : width of hidden layers
     n_layers       : number of hidden layers
 
     ResNet
-    ------
+
     hidden_dim     : feature width
     resnet_variant : 'resnet18' | 'resnet34' | 'resnet50' | 'resnet101' | 'resnet152'
 
     UNet
-    ----
+    
     unet_variant   : 'unet_small' | 'unet_base' | 'unet_large' | 'unet_xlarge'
     """
 

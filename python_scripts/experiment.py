@@ -19,12 +19,11 @@ class FlowExperiment:
     The main entry point. Bundles model config + interpolant + stepping mode.
 
     Parameters
-    ----------
     config      : FlowModelConfig
     interpolant : Interpolant
     stepping    : 'ode' or 'sde'
-        'ode' -- train one velocity model, integrate with Euler.
-        'sde' -- train a velocity model AND a denoiser, integrate with
+        'ode': train one velocity model, integrate with Euler.
+        'sde': train a velocity model AND a denoiser, integrate with
                  Euler-Maruyama. Only meaningful when interpolant.has_noise=True.
     """
 
@@ -94,7 +93,6 @@ class FlowExperiment:
 
         return {'velocity_loss': vel_loss, 'denoiser_loss': den_loss}
 
-    # ─────────────────────────────────────────────────────────────────────────────
     #  _train_one
     #
     #  Core training loop for a single model (either velocity or denoiser).
@@ -111,7 +109,6 @@ class FlowExperiment:
     #  Returns a list of per-step objective values (one per gradient step)
     #  which can be passed to plot_loss() whenever you want to visualise
     #  the training curve.
-    # ─────────────────────────────────────────────────────────────────────────────
 
     def _train_one(self, model, dataset_base, dataset_target, train_type,
                n_iterations, batch_size, base_lr, weight_decay, log_every,
@@ -252,7 +249,6 @@ class FlowExperiment:
             self.model_denoiser.load_state_dict(den_state)
         print("Weights loaded.")
 
-    # ─────────────────────────────────────────────────────────────────────────
 
     def _pick_start(self, dataset_base: DatasetDict, use_random: bool) -> torch.Tensor:
         if use_random:

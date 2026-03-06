@@ -58,10 +58,7 @@ def _dataset_to_gaussian(dataset: DatasetDict) -> Dataset:
         return ex
     return dataset["train"].map(_rand)
 
-
-# ══════════════════════════════════════════════════════════════════════════════
 #  LOW-LEVEL INTEGRATORS
-# ══════════════════════════════════════════════════════════════════════════════
 
 def _prep_x(x: torch.Tensor, device, needs_flatten: bool,
             channels: int, img_size: int) -> torch.Tensor:

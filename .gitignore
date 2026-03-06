@@ -2,3 +2,4 @@ __pycache__/
 *.pt
 models/__pycache__
 stochastic_interpolants.py
+old_files/

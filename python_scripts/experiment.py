@@ -19,9 +19,9 @@ class FlowExperiment:
     The main entry point. Bundles model config + interpolant + stepping mode.
 
     Parameters
-    config      : FlowModelConfig
-    interpolant : Interpolant
-    stepping    : 'ode' or 'sde'
+    config: FlowModelConfig
+    interpolant: Interpolant
+    stepping: 'ode' or 'sde'
         'ode': train one velocity model, integrate with Euler.
         'sde': train a velocity model AND a denoiser, integrate with
                  Euler-Maruyama. Only meaningful when interpolant.has_noise=True.
@@ -62,15 +62,13 @@ class FlowExperiment:
         Train the experiment's model(s).
 
         Parameters
-        rand_run  : replace x_base with fresh Gaussian noise each step
-                    (unconditional generation from pure noise).
-        out_name  : base filename for checkpoints.
-                    Saves <out_name>_velocity.pt  and  <out_name>_denoiser.pt
+        rand_run: replace x_base with fresh Gaussian noise each step
+        out_name: base filename for checkpoints.
 
         Returns
         dict
-            'velocity_loss' : list[float]  -- per-step objective values
-            'denoiser_loss' : list[float]  -- per-step values, or [] if ODE-only
+            'velocity_loss' : list[float] # per-step objective values
+            'denoiser_loss' : list[float] # per-step values, or [] if ODE-only
 
         The loss lists can be passed directly to plot_loss() whenever you like.
         """
@@ -209,11 +207,6 @@ class FlowExperiment:
 
     def fid(self, dataset_target: DatasetDict, steps: int = 1000,
             batch_size: int = 64) -> float:
-        """
-        Pixel-space Frechet distance between generated samples and the real dataset.
-        Flows Gaussian noise through the velocity ODE, filters outliers, then
-        compares mean and covariance with real data.
-        """
         from scipy.linalg import sqrtm
 
         gaussian_ds = DatasetDict({"train": _dataset_to_gaussian(dataset_target)})

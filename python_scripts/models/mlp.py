@@ -2,7 +2,6 @@ import torch
 import torch.nn as nn
 from ..utils import sincos_embed
 
-# ══════════════════════════════════════════════════════════════════════════════
 #  MLP  (plain feedforward, no skip connections)
 #
 #  The simplest possible neural network for flow matching. Takes a flattened
@@ -11,24 +10,13 @@ from ..utils import sincos_embed
 #  Each hidden layer does:
 #    h = SiLU( Linear(h) + time_proj(e_t) )
 #
-#  The time embedding is added as a bias shift before the activation at every
-#  layer, so the network sees t at every stage. There is no residual path --
-#  each layer fully overwrites h with a new value. This means gradients have
-#  to flow back through every layer sequentially, which can make very deep
-#  networks hard to train.
-#
 #  The forward pass is:
-#    (B, C*H*W)                      -- flattened input image
-#        │
+#    (B, C*H*W) flattened image
 #    input_layer: Linear(input_size, hidden_size)
-#        │
 #    for each hidden layer:
-#        SiLU( Linear(h) + time_proj(e_t) )   -- no skip, h is fully overwritten
-#        │
+#        SiLU( Linear(h) + time_proj(e_t) )
 #    out_layer: Linear(hidden_size, input_size)
-#        │
-#    (B, C*H*W)                      -- predicted velocity, same size as input
-# ══════════════════════════════════════════════════════════════════════════════
+#    (B, C*H*W)
 
 class MLP(nn.Module):
     """
@@ -60,44 +48,19 @@ class MLP(nn.Module):
             h = self.act(layer(h) + proj(e_t))
         return self.out_layer(h)
     
-# ══════════════════════════════════════════════════════════════════════════════
 #  MLP_Residual  (feedforward with residual skip connections)
 #
 #  Same as MLP but with a skip connection at every hidden layer:
 #    h = h + SiLU( Linear(h) + time_proj(e_t) )
 #
-#  The key difference from plain MLP is the h + ... term. This means:
-#
-#  1. GRADIENT FLOW
-#     During backprop the gradient has a direct path back through the +h
-#     skip connection at every layer, bypassing the weights entirely. This
-#     means gradients don't vanish as easily, allowing much deeper networks
-#     to train reliably.
-#
-#  2. IDENTITY INITIALISATION
-#     At initialisation the weights are near zero so Linear(h) ≈ 0, which
-#     means each block starts as approximately the identity function h = h + 0.
-#     The network then learns small corrections on top of the identity rather
-#     than learning the full mapping from scratch.
-#
-#  3. TIME PROJECTION PER LAYER
-#     Each hidden layer has its own time_proj, so t affects every layer
-#     differently. Layer 0 might respond strongly to t=0.1 while layer 3
-#     responds strongly to t=0.9. This gives the network more expressive
-#     power in how it uses time information.
 #
 #  The forward pass is:
-#    (B, C*H*W)                      -- flattened input image
-#        │
+#    (B, C*H*W)
 #    input_layer: Linear(input_size, hidden_size)
-#        │
 #    for each hidden layer:
-#        h = h + SiLU( Linear(h) + time_proj(e_t) )   -- skip keeps h alive
-#        │
+#        h = h + SiLU( Linear(h) + time_proj(e_t) )
 #    out_layer: Linear(hidden_size, output_size)
-#        │
-#    (B, C*H*W)                      -- predicted velocity, same size as input
-# ══════════════════════════════════════════════════════════════════════════════
+#    (B, C*H*W)
     
 class MLP_Residual(nn.Module):
     """

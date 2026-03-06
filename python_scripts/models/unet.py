@@ -1,32 +1,23 @@
 import torch
 import torch.nn as nn
-# ══════════════════════════════════════════════════════════════════════════════
 #  UNET
 #
 #  We use the UNet2DModel from Hugging Face's diffusers library rather than
 #  writing our own. It is a standard 2D UNet designed specifically for
 #  generative modelling with time conditioning already built in.
 #
-#  Input  : (B, C, H, W) -- batch of images, no flattening needed
-#  Output : (B, C, H, W) -- same shape as input, predicted velocity field
-#
-#  Time conditioning is handled internally by UNet2DModel -- you just pass
-#  t directly and it injects it at every level of the encoder and decoder.
-#  This is better than our ResNet approach where time was only added at the end.
+#  Input  : (B, C, H, W); batch of images, no flattening needed
+#  Output : (B, C, H, W); same shape as input, predicted velocity field
 #
 #  The variants differ in how many channels each level has and how many
 #  conv blocks per level, controlling the capacity of the network:
 #
-#    unet_small  : (32, 64, 128),          1 block/level  -- fast, light
-#    unet_base   : (64, 128, 256, 512),    2 blocks/level -- good default
-#    unet_large  : (128, 256, 512, 1024),  2 blocks/level -- more capacity
-#    unet_xlarge : (256, 512, 1024, 1024), 3 blocks/level -- heaviest
+#    unet_small  : (32, 64, 128),          1 block/level
+#    unet_base   : (64, 128, 256, 512),    2 blocks/level
+#    unet_large  : (128, 256, 512, 1024),  2 blocks/level
+#    unet_xlarge : (256, 512, 1024, 1024), 3 blocks/level
 #
-#  The only constraint is that img_size must be divisible by 2^(num levels)
-#  because each encoder level halves the spatial dimensions and the decoder
-#  must upsample back to exactly the original size to concatenate skip connections.
-#  For unet_base with 4 levels: img_size must be divisible by 16.
-# ══════════════════════════════════════════════════════════════════════════════
+#  CONSTRAINT: img_size must be divisible by 2^(num levels)
 
 _UNET_CONFIGS = {
     'unet_small':  dict(

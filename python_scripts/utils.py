@@ -17,11 +17,8 @@ def prime_dataset(dataset: DatasetDict, model_type: str, img_size: int = 64) -> 
     """
     Prepare a raw image DatasetDict for training.
 
-    MLP / ResNet  ->  pixel_values flattened to a 1-D vector  (C*H*W,)
-    UNet          ->  pixel_values kept as (C, H, W) tensor
-
-    Call this once on both your base and target datasets before creating
-    a FlowExperiment.
+    MLP / ResNet -> pixel_values flattened to a 1-D vector  (C*H*W,)
+    UNet -> pixel_values kept as (C, H, W) tensor
     """
     needs_flat = model_type in ('mlp', 'mlp_residual')
 
@@ -108,9 +105,6 @@ def _sde_euler_maruyama(model_velocity, model_denoiser, x0, gamma,
                         img_size=64, channels=1, needs_flatten=True,
                         eps_max=0.05, eps_power=2.0, gamma_max=1.0, eps_floor=0.0):
     """
-    Euler-Maruyama integration of:
-      dX_t = [ b(t,X_t) - (eps(t)/gamma(t)) * eta(t,X_t) ] dt + sqrt(2*eps(t)) dW_t
-
     eps(t) = eps_max * (|gamma(t)| / gamma_max)^eps_power + eps_floor
     This ensures eps -> 0 at the endpoints where gamma -> 0.
     """

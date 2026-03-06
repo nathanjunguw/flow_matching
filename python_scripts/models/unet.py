@@ -1,6 +1,5 @@
 import torch
 import torch.nn as nn
-from diffusers import UNet2DModel
 # ══════════════════════════════════════════════════════════════════════════════
 #  UNET
 #
@@ -30,15 +29,36 @@ from diffusers import UNet2DModel
 # ══════════════════════════════════════════════════════════════════════════════
 
 _UNET_CONFIGS = {
-    'unet_small':  dict(block_out_channels=(32, 64, 128),        layers_per_block=1),
-    'unet_base':   dict(block_out_channels=(64, 128, 256, 512),  layers_per_block=2),
-    'unet_large':  dict(block_out_channels=(128, 256, 512, 1024), layers_per_block=2),
-    'unet_xlarge': dict(block_out_channels=(256, 512, 1024, 1024), layers_per_block=3),
+    'unet_small':  dict(
+        block_out_channels = (32, 64, 128),
+        layers_per_block   = 1,
+        down_block_types   = ('DownBlock2D', 'DownBlock2D', 'AttnDownBlock2D'),
+        up_block_types     = ('AttnUpBlock2D', 'UpBlock2D', 'UpBlock2D'),
+    ),
+    'unet_base':   dict(
+        block_out_channels = (64, 128, 256, 512),
+        layers_per_block   = 2,
+        down_block_types   = ('DownBlock2D', 'DownBlock2D', 'AttnDownBlock2D', 'AttnDownBlock2D'),
+        up_block_types     = ('AttnUpBlock2D', 'AttnUpBlock2D', 'UpBlock2D', 'UpBlock2D'),
+    ),
+    'unet_large':  dict(
+        block_out_channels = (128, 256, 512, 1024),
+        layers_per_block   = 2,
+        down_block_types   = ('DownBlock2D', 'DownBlock2D', 'AttnDownBlock2D', 'AttnDownBlock2D'),
+        up_block_types     = ('AttnUpBlock2D', 'AttnUpBlock2D', 'UpBlock2D', 'UpBlock2D'),
+    ),
+    'unet_xlarge': dict(
+        block_out_channels = (256, 512, 1024, 1024),
+        layers_per_block   = 3,
+        down_block_types   = ('DownBlock2D', 'DownBlock2D', 'AttnDownBlock2D', 'AttnDownBlock2D'),
+        up_block_types     = ('AttnUpBlock2D', 'AttnUpBlock2D', 'UpBlock2D', 'UpBlock2D'),
+    ),
 }
 
 class UNet(nn.Module):
     def __init__(self, channels: int, variant: str):
         super().__init__()
+        from diffusers import UNet2DModel
         if variant not in _UNET_CONFIGS:
             raise ValueError(f"Unknown UNet variant '{variant}'. "
                              f"Choose from: {list(_UNET_CONFIGS.keys())}")

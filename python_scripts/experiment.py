@@ -63,14 +63,12 @@ class FlowExperiment:
         Train the experiment's model(s).
 
         Parameters
-        ----------
         rand_run  : replace x_base with fresh Gaussian noise each step
                     (unconditional generation from pure noise).
         out_name  : base filename for checkpoints.
                     Saves <out_name>_velocity.pt  and  <out_name>_denoiser.pt
 
         Returns
-        -------
         dict
             'velocity_loss' : list[float]  -- per-step objective values
             'denoiser_loss' : list[float]  -- per-step values, or [] if ODE-only
@@ -155,10 +153,14 @@ class FlowExperiment:
             scheduler.step()
 
             if step % log_every == 0:
+                allocated = torch.cuda.memory_allocated() / 1024**3
+                total     = torch.cuda.get_device_properties(0).total_memory / 1024**3
+                percent   = allocated / total * 100
                 pbar.set_postfix({
                     'obj':  f"{obj.item():.4f}",
                     'mse':  f"{mse.item():.4f}",
                     'grad': f"{grad_norm:.3f}",
+                    'memory': f"{allocated:.2f} GB / {total:.2f} GB ({percent:.2f}%)"
                 })
 
         self.config.save(model, out_path)
@@ -173,6 +175,7 @@ class FlowExperiment:
         save_frames:      int   = 9,
         clamp_x:          Optional[float] = 5.0,
         use_random_start: bool  = True,
+        use_gaussian_start: bool = True,
         # SDE-specific
         eps_max:   float = 0.05,
         eps_power: float = 2.0,
@@ -184,6 +187,8 @@ class FlowExperiment:
         Uses ODE or SDE stepping according to self.stepping.
         """
         x_src  = self._pick_start(dataset_base, use_random_start)
+        if use_gaussian_start:
+            x_src = torch.randn_like(x_src)
         kwargs = dict(n_steps=n_steps, clamp_x=clamp_x, save_frames=save_frames,
                       img_size=self.config.img_size, channels=self.config.channels,
                       needs_flatten=self.config.needs_flatten)

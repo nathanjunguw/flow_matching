@@ -212,3 +212,11 @@ def plot_loss(loss_history: list, title: str = "Training objective", window: int
     plt.grid(True)
     plt.tight_layout()
     plt.show()
+
+def get_size_and_channel(dataset):
+    sample = torch.tensor(dataset['train']['pixel_values'][0])
+
+    # get the image size (assuming the image is square)
+    IMAGE_SIZE = sample.shape[1]
+    CHANNELS = 1 if sample.dim() == 2 else sample.shape[0]
+    return IMAGE_SIZE, CHANNELS

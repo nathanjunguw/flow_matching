@@ -3,13 +3,11 @@ import sys
 import torch
 from datasets import DatasetDict
 
-# ══════════════════════════════════════════════════════════════════════════════
 #  INTERPOLANT PATHS
 #  Each path name 'foo' must have functions:
 #    alpha_foo, beta_foo, gamma_foo, dalpha_foo, dbeta_foo, dgamma_foo
-# ══════════════════════════════════════════════════════════════════════════════
 
-# ── linear  (gamma = 0) ─────────────────────────────────────────────────────
+# ── linear  (gamma = 0)
 
 def alpha_linear(t):    return 1.0 - t
 def beta_linear(t):     return t
@@ -18,7 +16,7 @@ def dalpha_linear(t):   return -torch.ones_like(t)
 def dbeta_linear(t):    return torch.ones_like(t)
 def dgamma_linear(t):   return torch.zeros_like(t)
 
-# ── variance_preserve  (gamma = 0) ──────────────────────────────────────────
+# ── variance_preserve  (gamma = 0)
 
 def alpha_variance_preserve(t):  return torch.cos(math.pi / 2 * t)
 def beta_variance_preserve(t):   return torch.sin(math.pi / 2 * t)
@@ -27,7 +25,7 @@ def dalpha_variance_preserve(t): return (-math.pi / 2) * torch.sin(math.pi / 2 *
 def dbeta_variance_preserve(t):  return ( math.pi / 2) * torch.cos(math.pi / 2 * t)
 def dgamma_variance_preserve(t): return torch.zeros_like(t)
 
-# ── trig_noise  (gamma = c*sin(pi*t), nonzero -> SDE stepping is meaningful) ─
+# ── trig_noise  (gamma = c*sin(pi*t), nonzero -> SDE stepping is meaningful)
 
 _NOISE_C = 0.3
 
